@@ -244,7 +244,7 @@ void source_decrypt()
 	}
 
 	// tag check
-	if (strcmp((const char *)pl_buffer.data_raw, PL_TOOL_NAME) == 0) {
+	if (strstr((const char *)pl_buffer.data_raw, PL_TOOL_NAME) == 0) {
 		printf("%s:%s\n", __func__, "tag check");
 		return;
 	}
@@ -304,7 +304,7 @@ int source_decrypt_openssl(const unsigned char* data_enc, const int len_enc, cha
 	// new
     if(!(ctx = EVP_CIPHER_CTX_new())) {
         EVP_CIPHER_CTX_free(ctx);
-        return ERR_FAIL_EVP_INIT;
+        return EVP_FAIL_EVP_NEW;
     }
 
 	// init
