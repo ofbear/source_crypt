@@ -22,11 +22,12 @@ typedef struct {
 	unsigned char *out_dir;
 
 	unsigned char *in_file;
-	unsigned char *out_file;
 
 } SourceSystemBuffer;
 
 typedef struct {
+	unsigned char *path;
+
 	FILE *fp_r;
 	FILE *fp_w;
 
@@ -34,9 +35,9 @@ typedef struct {
 	char *data_tmp;
 	char *data_enc;
 
-	int* len_raw;
+	int len_raw;
 	int len_tmp;
-	int* len_enc;
+	int len_enc;
 
 } SourceCryptBuffer;
 

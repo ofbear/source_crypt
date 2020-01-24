@@ -61,6 +61,8 @@ int main(int argc, char *argv[])
 		strncpy(sys_buffer.in_dir, sys_buffer.in_file, (unsigned char*)strrchr(sys_buffer.in_file, (int)('/')) - sys_buffer.in_file + 1);
 
 		source_file(sys_buffer.in_file);
+
+		free(sys_buffer.in_dir);
 	}
 
 	// init
@@ -70,13 +72,6 @@ int main(int argc, char *argv[])
 // init sys
 void source_sys_init()
 {
-	if (sys_buffer.in_dir != 0) {
-		free(sys_buffer.in_dir);
-	}
-	if (sys_buffer.out_file != 0) {
-		free(sys_buffer.out_file);
-	}
-
 	memset(&sys_buffer, 0x00, sizeof(SourceSystemBuffer));
 }
 
@@ -144,7 +139,7 @@ void source_file(unsigned char *in_file)
 		return;
 	}
 
-	sys_buffer.out_file = calloc(1, sizeof(char) * PATH_SIZE);
+	pl_buffer.path = calloc(1, sizeof(char) * PATH_SIZE);
 
 	// make name path(output dir + (fullpath - input dir))
 	// ex) 
@@ -154,7 +149,7 @@ void source_file(unsigned char *in_file)
 	// output dir:/usr/local/src/enc/
 	// -> /usr/local/src/enc/auth/target.php
 	tmp_file = in_file + strlen(sys_buffer.in_dir);
-	snprintf(sys_buffer.out_file, PATH_SIZE, "%s/%s", sys_buffer.out_dir, tmp_file);
+	snprintf(pl_buffer.path, PATH_SIZE, "%s/%s", sys_buffer.out_dir, tmp_file);
 
 	// encrypt
 	if (strcmp((const char *)sys_buffer.mode, "encrypt") == 0) {
@@ -172,19 +167,22 @@ void source_file(unsigned char *in_file)
 // init
 void source_pl_init()
 {
+	if (pl_buffer.path != 0) {
+		free(pl_buffer.path);
+	}
 	if (pl_buffer.fp_r != 0) {
 		fclose(pl_buffer.fp_r);
 	}
 	if (pl_buffer.fp_w != 0) {
 		fclose(pl_buffer.fp_w);
 	}
-	if (pl_buffer.data_raw !=0) {
+	if (pl_buffer.data_raw != 0) {
 		free(pl_buffer.data_raw);
 	}
-	if (pl_buffer.data_tmp !=0) {
+	if (pl_buffer.data_tmp != 0) {
 		free(pl_buffer.data_tmp);
 	}
-	if (pl_buffer.data_enc !=0) {
+	if (pl_buffer.data_enc != 0) {
 		free(pl_buffer.data_enc);
 	}
 
@@ -199,29 +197,28 @@ void source_encrypt()
 
 	// get file data
 	fstat(fileno(pl_buffer.fp_r), &stat_buf);
-	pl_buffer.len_tmp = stat_buf.st_size;
+	pl_buffer.len_tmp = stat_buf.st_size + 1;
 	pl_buffer.data_tmp = calloc(1, sizeof(char) * pl_buffer.len_tmp);
 	fread(pl_buffer.data_tmp, pl_buffer.len_tmp, 1, pl_buffer.fp_r);
 
 	// add tag(tag is checked on decrypt)
-	*pl_buffer.len_raw = pl_buffer.len_tmp + strlen(PL_TOOL_NAME);
-	pl_buffer.data_raw = calloc(1, sizeof(char) * *pl_buffer.len_raw);
-	snprintf(pl_buffer.data_raw, *pl_buffer.len_raw, "%s%s", PL_TOOL_NAME, pl_buffer.data_tmp);
+	pl_buffer.len_raw = pl_buffer.len_tmp + (int)strlen(PL_TOOL_NAME);
+	pl_buffer.data_raw = calloc(1, sizeof(char) * pl_buffer.len_raw);
+	snprintf(pl_buffer.data_raw, pl_buffer.len_raw, "%s%s", PL_TOOL_NAME, pl_buffer.data_tmp);
 
 	// prepare memory for encrypt data
-	*pl_buffer.len_enc = ((*pl_buffer.len_raw / PL_ENCRYPT_BLOCK_SIZE) + 1) * PL_ENCRYPT_BLOCK_SIZE;
-	pl_buffer.data_enc = calloc(1, sizeof(char) * *pl_buffer.len_enc);
+	pl_buffer.len_enc = ((pl_buffer.len_raw / PL_ENCRYPT_BLOCK_SIZE) + 1) * PL_ENCRYPT_BLOCK_SIZE;
+	pl_buffer.data_enc = calloc(1, sizeof(char) * pl_buffer.len_enc);
 
 	// encrypt
-	if ((ret = source_encrypt_openssl(pl_buffer.data_raw, *pl_buffer.len_raw, pl_buffer.data_enc, pl_buffer.len_enc)) != ERR_NOTHING) {
+	if ((ret = source_encrypt_openssl(pl_buffer.data_raw, pl_buffer.len_raw, pl_buffer.data_enc, &pl_buffer.len_enc)) != ERR_NOTHING) {
 		printf("%s:%s:%d\n", __func__, "encrypt", ret);
 		return;
 	}
 
 	// write encrypt data
-	pl_buffer.fp_w = fopen(sys_buffer.out_file, "w");
-	fwrite(pl_buffer.data_enc, *pl_buffer.len_enc, 1, pl_buffer.fp_w);
-	fclose(pl_buffer.fp_w);
+	pl_buffer.fp_w = fopen(pl_buffer.path, "w");
+	fwrite(pl_buffer.data_enc, pl_buffer.len_enc, 1, pl_buffer.fp_w);
 }
 
 // decrypt wrapper
@@ -232,16 +229,16 @@ void source_decrypt()
 
 	// get file data
 	fstat(fileno(pl_buffer.fp_r), &stat_buf);
-	*pl_buffer.len_enc = stat_buf.st_size;
-	pl_buffer.data_enc = calloc(1, sizeof(char) * *pl_buffer.len_enc);
-	fread(pl_buffer.data_enc, *pl_buffer.len_enc, 1, pl_buffer.fp_r);
+	pl_buffer.len_enc = stat_buf.st_size;
+	pl_buffer.data_enc = calloc(1, sizeof(char) * pl_buffer.len_enc);
+	fread(pl_buffer.data_enc, pl_buffer.len_enc, 1, pl_buffer.fp_r);
 
 	// prepare memory for decrypt data
-	*pl_buffer.len_raw = *pl_buffer.len_enc;
-	pl_buffer.data_raw = calloc(1, sizeof(char) * *pl_buffer.len_raw);
+	pl_buffer.len_raw = pl_buffer.len_enc;
+	pl_buffer.data_raw = calloc(1, sizeof(char) * pl_buffer.len_raw);
 
 	// decrypt
-	if ((ret = source_decrypt_openssl(pl_buffer.data_enc, *pl_buffer.len_enc, pl_buffer.data_raw, pl_buffer.len_raw)) != ERR_NOTHING) {
+	if ((ret = source_decrypt_openssl(pl_buffer.data_enc, pl_buffer.len_enc, pl_buffer.data_raw, &pl_buffer.len_raw)) != ERR_NOTHING) {
 		printf("%s:%s:%d\n", __func__, "decrypt", ret);
 		return;
 	}
@@ -253,9 +250,8 @@ void source_decrypt()
 	}
 
 	// write decrypt data
-	pl_buffer.fp_w = fopen(sys_buffer.out_file, "w");
-	fwrite(pl_buffer.data_raw, *pl_buffer.len_raw, 1, pl_buffer.fp_w);
-	fclose(pl_buffer.fp_w);
+	pl_buffer.fp_w = fopen(pl_buffer.path, "w");
+	fwrite(pl_buffer.data_raw, pl_buffer.len_raw, 1, pl_buffer.fp_w);
 }
 
 // encrypt
@@ -331,7 +327,7 @@ int source_decrypt_openssl(const unsigned char* data_enc, const int len_enc, cha
 		return ERR_FAIL_EVP_FINAL;
 	}
 
-	*len_raw = len_raw_0 + len_raw_1;
+	*len_raw = len_raw_0 + len_raw_1 - 1;
 	memset(data_raw + *len_raw, 0x00, len_enc - *len_raw);
 
 	EVP_CIPHER_CTX_free(ctx);
